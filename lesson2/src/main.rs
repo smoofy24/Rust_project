@@ -1,7 +1,8 @@
-use std::io;
-use std::io::Write;
-use slug::slugify;
+mod modules;
+
 use clap::Parser;
+use slug::slugify;
+use modules::my_funcs::*;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -24,7 +25,11 @@ struct Args {
     ///Switch case
     #[arg(long, action)]
     switch_case: bool,
+    ///CSV parse
+    #[arg(long, action)]
+    csv: bool,
 }
+
 fn main() {
 
     let options = Args::parse();
@@ -36,6 +41,7 @@ fn main() {
         options.switch_case,
         options.slugify,
         options.uppercase,
+        options.csv,
     ]
         .iter()
         .filter(|&flag| *flag)
@@ -46,31 +52,27 @@ fn main() {
         return;
     }
 
-    let mut input = String::new();
-    print!("Please enter the string: ");
-    io::stdout().flush().unwrap();
-    io::stdin().read_line(&mut input).expect("Failed to read string!!");
-
     let transformed_output = match options {
-        Args { lowercase: true, .. } => input.to_lowercase(),
-        Args { uppercase: true, .. } => input.to_uppercase(),
-        Args { no_spaces: true, .. } => input.replace(" ", ""),
-        Args { slugify: true, .. } => slugify(&input),
-        Args { reverse: true, .. } => input.chars().rev().collect(),
-        Args { switch_case: true, .. } => input.chars().map(|c| {
-            if c.is_ascii_uppercase() {
-                c.to_ascii_lowercase()
-            } else if c.is_ascii_lowercase() {
-                c.to_ascii_uppercase()
-            } else {
-                c
+        Args { lowercase: true, .. } => lowercase(&read_input()),
+        Args { uppercase: true, .. } => uppercase(&read_input()),
+        Args { no_spaces: true, .. } => no_spaces(&read_input()),
+        Args { slugify: true, .. } => slugify(&read_input()),
+        Args { reverse: true, .. } => reverse(&read_input()),
+        Args { switch_case: true, .. } => switchcase(&read_input()),
+        Args { csv: true, .. } => {
+            match csv_parser(&read_csv()) {
+                Ok(records) => format_as_table(records),
+                Err(err) => {
+                    println!("Error parsing CSV: {}", err);
+                    return;
+                }
             }
-        }).collect(),
+        },
         _ => {
             println!("Invalid argument!!!");
             return;
         }
     };
 
-    println!("{}", transformed_output.trim());
+    println!("{}", transformed_output);
 }
