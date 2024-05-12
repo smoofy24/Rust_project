@@ -60,10 +60,20 @@ fn main() {
         Args { reverse: true, .. } => reverse(&read_input()),
         Args { switch_case: true, .. } => switchcase(&read_input()),
         Args { csv: true, .. } => {
-            match csv_parser(&read_csv()) {
-                Ok(records) => format_as_table(records),
-                Err(err) => {
-                    println!("Error parsing CSV: {}", err);
+            match read_csv() {
+                Some(csv_data) => {
+                    match csv_parser(&csv_data) {
+                        Ok(records) => {
+                            format_as_table(records)
+                        }
+                        Err(err) => {
+                            println!("Error parsing CSV: {}", err);
+                            return;
+                        }
+                    }
+                }
+                None => {
+                    println!("Error getting CSV!");
                     return;
                 }
             }

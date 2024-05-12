@@ -41,7 +41,7 @@ pub fn read_input() -> String {
     input
 }
 
-pub fn read_csv() -> String {
+pub fn read_csv() -> Option<String> {
     let mut lines = String::new();
     let stdin = io::stdin();
 
@@ -56,7 +56,7 @@ pub fn read_csv() -> String {
         lines.push('\n'); // Add a newline character after each line
     }
 
-    lines
+    Some(lines)
 }
 
 pub fn lowercase(string: &str) -> String {
