@@ -3,6 +3,8 @@ mod modules;
 use clap::Parser;
 use slug::slugify;
 use modules::my_funcs::*;
+use std::path::Path;
+use std::fs;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -28,10 +30,12 @@ struct Args {
     ///CSV parse
     #[arg(long, action)]
     csv: bool,
+    /// CSV path (optional)
+    #[arg(long, value_name = "PATH")]
+    csv_path: Option<String>,
 }
 
 fn main() {
-
     let options = Args::parse();
 
     let opt_num = [
@@ -47,42 +51,80 @@ fn main() {
         .filter(|&flag| *flag)
         .count();
 
-    if opt_num != 1 {
-        println!("Exactly one argument must be provided!");
-        return;
-    }
+    if opt_num == 1 {
+        let transformed_output = match options {
+            Args { lowercase: true, .. } => lowercase(&read_input()),
+            Args { uppercase: true, .. } => uppercase(&read_input()),
+            Args { no_spaces: true, .. } => no_spaces(&read_input()),
+            Args { slugify: true, .. } => slugify(&read_input()),
+            Args { reverse: true, .. } => reverse(&read_input()),
+            Args { switch_case: true, .. } => switchcase(&read_input()),
+            Args { csv: true, .. } => {
 
-    let transformed_output = match options {
-        Args { lowercase: true, .. } => lowercase(&read_input()),
-        Args { uppercase: true, .. } => uppercase(&read_input()),
-        Args { no_spaces: true, .. } => no_spaces(&read_input()),
-        Args { slugify: true, .. } => slugify(&read_input()),
-        Args { reverse: true, .. } => reverse(&read_input()),
-        Args { switch_case: true, .. } => switchcase(&read_input()),
-        Args { csv: true, .. } => {
-            match read_csv() {
-                Some(csv_data) => {
-                    match csv_parser(&csv_data) {
-                        Ok(records) => {
-                            format_as_table(records)
+
+                if let Some(ref path_str) = options.csv_path {
+                    let csv_path = Path::new(path_str);
+                        match fs::metadata(csv_path) {
+                            Err(e) => {
+                                eprintln!("Error reading the file {:?}: {}", csv_path, e);
+                                return;
+                            }
+                            Ok(path) => {
+                                if path.is_file() {
+                                    match read_csv_file(csv_path) {
+                                        Some(csv_data) => {
+                                            match csv_parser(&csv_data) {
+                                                Ok(records) => {
+                                                    format_as_table(records)
+                                                }
+                                                Err(err) => {
+                                                    eprintln!("Error parsing CSV: {}", err);
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            eprintln!("Error getting CSV!");
+                                            return;
+                                        }
+                                    }
+                                } else {
+                                    eprintln!("Provided path is not a file {:?}", path);
+                                    return;
+                                }
+                            }
                         }
-                        Err(err) => {
-                            println!("Error parsing CSV: {}", err);
+                } else {
+                    match read_csv() {
+                        Some(csv_data) => {
+                            match csv_parser(&csv_data) {
+                                Ok(records) => {
+                                    format_as_table(records)
+                                }
+                                Err(err) => {
+                                    eprintln!("Error parsing CSV: {}", err);
+                                    return;
+                                }
+                            }
+                        }
+                        None => {
+                            eprintln!("Error getting CSV!");
                             return;
                         }
                     }
                 }
-                None => {
-                    println!("Error getting CSV!");
-                    return;
-                }
+            },
+            _ => {
+                eprintln!("Invalid argument!!!");
+                return;
             }
-        },
-        _ => {
-            println!("Invalid argument!!!");
-            return;
-        }
-    };
+        };
 
-    println!("{}", transformed_output);
+        println!("{}", transformed_output);
+    } else if opt_num == 0 {
+
+    } else {
+        eprintln!("Too many parameters!!!");
+        return;
+    }
 }

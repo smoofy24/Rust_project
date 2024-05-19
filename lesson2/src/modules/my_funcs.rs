@@ -1,8 +1,9 @@
 use csv::{ReaderBuilder, StringRecord};
 use prettytable::{Table, Row, Cell};
 use std::fmt::Write as FmtWrite;
-use std::io::{BufRead, self, Write};
-
+use std::io::{BufRead, self, Write, Read};
+use std::path::Path;
+use std::fs::File;
 
 pub fn csv_parser(csv_string: &str) -> Result<Vec<Vec<String>>, csv::Error> {
     let mut reader = ReaderBuilder::new().has_headers(false).from_reader(csv_string.as_bytes());
@@ -59,6 +60,16 @@ pub fn read_csv() -> Option<String> {
     Some(lines)
 }
 
+
+pub fn read_csv_file(path: &Path) -> Option<String> {
+    let mut file = File::open(path).expect("Can't open the file!");
+
+    let mut file_contents = String::new();
+
+    file.read_to_string(&mut file_contents).expect("Failed to read the file!");
+
+    Some(file_contents)
+}
 pub fn lowercase(string: &str) -> String {
     string.to_lowercase()
 }
