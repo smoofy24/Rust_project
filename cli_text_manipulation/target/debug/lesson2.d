@@ -1,0 +1,1 @@
+/Users/smoofy/Documents/Rust_project/lesson2/target/debug/lesson2: /Users/smoofy/Documents/Rust_project/lesson2/src/main.rs /Users/smoofy/Documents/Rust_project/lesson2/src/modules/mod.rs /Users/smoofy/Documents/Rust_project/lesson2/src/modules/my_funcs.rs

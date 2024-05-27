@@ -1,0 +1,210 @@
+mod modules;
+
+use clap::{command, Parser, ArgGroup};
+use std::net::{TcpStream, TcpListener, Shutdown};
+use std::sync::{ Arc, Mutex };
+use modules::server::handle_client;
+use std::thread;
+use log::{info, warn, error};
+use env_logger;
+use std::process;
+use crate::modules::client::{is_valid_file, parse_command};
+use std::fs::File;
+use std::io::{self, Read, Write};
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+#[command(group(
+    ArgGroup::new("mode")
+    .required(true)
+    .args(&["client", "server"]),
+))]
+struct Args {
+    // IP address for client/server connection
+    #[arg(long, value_name = "HOST")]
+    host: String,
+    /// Port for the connection
+    #[arg(long, value_name = "PORT")]
+    port: i32,
+    /// Run as client
+    #[arg(long)]
+    client: bool,
+    /// Run as server
+    #[arg(long)]
+    server: bool,
+}
+
+fn parse_arguments() -> Args {
+    let args = Args::parse();
+
+    // Validate the PORT value
+    if !(0..=65535).contains(&args.port) {
+        eprintln!("Error: Port must be between 0 and 65535.");
+        std::process::exit(1);
+    }
+
+    args
+}
+
+fn main() {
+
+    env_logger::init();
+
+    let options = parse_arguments();
+
+    if options.server {
+
+        // Server part of the application
+
+        let address = format!("{}:{}",options.host, options.port);
+        let listener = match TcpListener::bind(&address) {
+            Ok(listener) => listener,
+            Err(e) => {
+                error!("Failed to bind to address {}: {}", address, e);
+                process::exit(1);
+            }
+        };
+
+        info!("Successfully bound to address: {}", address);
+
+        let clients = Arc::new(Mutex::new(Vec::<TcpStream>::new()));
+        for stream in listener.incoming() {
+            let stream = stream.expect("Failed to accept connection");
+
+            // Log client connection
+
+            match stream.peer_addr() {
+                Ok(addr) => info!("Client connected from address: {}", addr),
+                Err(e) => error!("Failed to get client address: {}", e),
+            };
+
+            let clients = Arc::clone(&clients);
+
+
+            clients.lock().unwrap().push(stream.try_clone().expect("Failed to clone stream"));
+
+            thread::spawn(move || {
+                handle_client(stream, clients);
+            });
+        }
+
+
+    } else {
+
+        // Client part of the application
+
+        let address = format!("{}:{}",options.host, options.port);
+
+        // Connect to the server
+        let mut stream = match TcpStream::connect(&address) {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("Failed connect to address {}: {}", address, e);
+                process::exit(1);
+            }
+        };
+
+        info!("Successfully connected to address: {}", address);
+
+        // Use Arc and Mutex to share the stream between threads
+        let stream_clone = stream.try_clone().expect("Failed to clone stream!");
+
+        let stream_arc = Arc::new(Mutex::new(stream_clone));
+
+        // Clone the stream for the sender thread
+        let sender_stream = Arc::clone(&stream_arc);
+        thread::spawn(move || {
+            thread::spawn(move || {
+                loop {
+                    if let Some((command, argument)) = parse_command() {
+                        let message = format!("{} {}", command, argument);
+                        let size = message.len();
+
+                        let mut stream = match sender_stream.lock() {
+                            Ok(stream) => stream,
+                            Err(e) => {
+                                error!("Failed to lock stream: {}", e);
+                                process::exit(1);
+                            }
+                        };
+
+                        // Send the command and size
+                        if let Err(e) = stream.write_all(format!("{} {}\n", command, size).as_bytes()) {
+                            error!("Failed to write to stream: {}", e);
+                            process::exit(1);
+                        }
+                        if let Err(e) = stream.write_all(message.as_bytes()) {
+                            error!("Failed to write to stream: {}", e);
+                            process::exit(1);
+                        }
+                    } else {
+                        println!("No command entered. Exiting...");
+                        break;
+                    }
+                }
+            });
+        });
+
+        // Clone the stream for the reader thread
+        let reader_stream = Arc::clone(&stream_arc);
+        thread::spawn(move || {
+            loop {
+                loop {
+                    // Read the command and size from the server
+                    let mut buffer = [0; 1024]; // Buffer size can be adjusted as needed
+                    match stream.read(&mut buffer) {
+                        Ok(n) => {
+                            if n == 0 {
+                                // Connection closed by server
+                                println!("Server closed the connection. Exiting...");
+                                break;
+                            }
+
+                            // Parse the received data
+                            let data = String::from_utf8_lossy(&buffer[..n]);
+                            let parts: Vec<&str> = data.trim().splitn(2, ' ').collect();
+                            if parts.len() == 2 {
+                                let command = parts[0];
+                                let size_str = parts[1];
+                                if let Ok(size) = size_str.parse::<usize>() {
+                                    // Read the data payload of specified size
+                                    let mut payload = vec![0; size];
+                                    match stream.read_exact(&mut payload) {
+                                        Ok(_) => {
+                                            // Process the received command and payload
+                                            println!("Received command: {}", command);
+                                            println!("Received payload: {}", String::from_utf8_lossy(&payload));
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to read payload: {}", e);
+                                            process::exit(1);
+                                        }
+                                    }
+                                } else {
+                                    error!("Failed to parse size: {}", size_str);
+                                    process::exit(1);
+                                }
+                            } else {
+                                error!("Invalid data received from server");
+                                process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to read from stream: {}", e);
+                            process::exit(1);
+                        }
+                    }
+                }
+
+            }
+        });
+
+        // Keep the main thread alive to keep the client running
+        loop {
+            // Perform any main thread tasks if necessary
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+
+    }
+
+}
