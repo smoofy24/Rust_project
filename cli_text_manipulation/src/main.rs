@@ -37,6 +37,7 @@ struct Args {
     csv_path: Option<String>,
 }
 
+
 fn main() {
     let options = Args::parse();
 
