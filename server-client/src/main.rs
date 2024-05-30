@@ -8,7 +8,7 @@ use std::thread;
 use log::{info, warn, error};
 use env_logger;
 use std::process;
-use crate::modules::client::{is_valid_file, parse_command};
+use crate::modules::client::{create_dir, is_valid_file, parse_command, strip_to_second_space};
 use std::fs::File;
 use std::io::{self, Read, Write};
 
@@ -150,6 +150,7 @@ fn main() {
         thread::spawn(move || {
             loop {
                 loop {
+
                     // Read the command and size from the server
                     let mut buffer = [0; 1024]; // Buffer size can be adjusted as needed
                     match stream.read(&mut buffer) {
@@ -157,32 +158,62 @@ fn main() {
                             if n == 0 {
                                 // Connection closed by server
                                 println!("Server closed the connection. Exiting...");
-                                break;
+                                process::exit(1);
                             }
 
                             // Parse the received data
                             let data = String::from_utf8_lossy(&buffer[..n]);
                             let parts: Vec<&str> = data.trim().splitn(2, ' ').collect();
+
                             if parts.len() == 2 {
+
                                 let command = parts[0];
                                 let size_str = parts[1];
                                 if let Ok(size) = size_str.parse::<usize>() {
+
                                     // Read the data payload of specified size
                                     let mut payload = vec![0; size];
                                     match stream.read_exact(&mut payload) {
                                         Ok(_) => {
-                                            // Process the received command and payload
-                                            println!("Received command: {}", command);
-                                            println!("Received payload: {}", String::from_utf8_lossy(&payload));
+                                            let data = strip_to_second_space(String::from_utf8_lossy(&payload));
+                                            match command {
+                                                ".text" => {
+                                                    println!("{}", data);
+                                                }
+                                                ".image" => {
+                                                    match create_dir("images") {
+                                                        Ok(()) => {
+                                                            info!("Directory 'images' ready...");
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Could not create a directory : {} ", e);
+                                                        }
+                                                    }
+                                                }
+                                                ".file" => {
+
+                                                    match create_dir("files") {
+                                                        Ok(()) => {
+                                                            info!("Directory 'files' ready...");
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Could not create a directory : {} ", e);
+                                                        }
+                                                    }
+                                                }
+                                                _ => {
+                                                    println!("Received command: none");
+                                                }
+                                            }
                                         }
                                         Err(e) => {
                                             error!("Failed to read payload: {}", e);
-                                            process::exit(1);
+                                            continue;
                                         }
                                     }
                                 } else {
                                     error!("Failed to parse size: {}", size_str);
-                                    process::exit(1);
+                                    continue;
                                 }
                             } else {
                                 error!("Invalid data received from server");
