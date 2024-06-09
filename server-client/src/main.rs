@@ -1,16 +1,15 @@
-mod modules;
+//!
 
 use clap::{command, Parser, ArgGroup};
-use std::net::{TcpStream, TcpListener, Shutdown};
+use std::net::{TcpStream, TcpListener};
 use std::sync::{ Arc, Mutex };
-use modules::server::handle_client;
 use std::thread;
-use log::{info, warn, error};
+use log::{info, error};
 use env_logger;
 use std::process;
-use crate::modules::client::{create_dir, is_valid_file, parse_command, strip_to_second_space};
-use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
+use sta_client::{ strip_to_second_space, parse_command, create_dir };
+use sta_server::handle_client;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -50,12 +49,13 @@ fn main() {
 
     env_logger::init();
 
+    /// Parse taken arguments
     let options = parse_arguments();
 
     if options.server {
+        /// Server part of the application
 
-        // Server part of the application
-
+        /// Create socket
         let address = format!("{}:{}",options.host, options.port);
         let listener = match TcpListener::bind(&address) {
             Ok(listener) => listener,
@@ -67,22 +67,23 @@ fn main() {
 
         info!("Successfully bound to address: {}", address);
 
+        /// Create vector of connections
         let clients = Arc::new(Mutex::new(Vec::<TcpStream>::new()));
+
+        /// Iterate through the connection
         for stream in listener.incoming() {
             let stream = stream.expect("Failed to accept connection");
 
-            // Log client connection
-
+            /// Log client connection
             match stream.peer_addr() {
                 Ok(addr) => info!("Client connected from address: {}", addr),
                 Err(e) => error!("Failed to get client address: {}", e),
             };
 
             let clients = Arc::clone(&clients);
-
-
             clients.lock().unwrap().push(stream.try_clone().expect("Failed to clone stream"));
 
+            /// Spawn a thread for the active connection
             thread::spawn(move || {
                 handle_client(stream, clients);
             });
@@ -91,11 +92,12 @@ fn main() {
 
     } else {
 
-        // Client part of the application
+        /// Client part of the application
 
+        /// Define connection address
         let address = format!("{}:{}",options.host, options.port);
 
-        // Connect to the server
+        /// Connect to the server
         let mut stream = match TcpStream::connect(&address) {
             Ok(stream) => stream,
             Err(e) => {
@@ -106,12 +108,12 @@ fn main() {
 
         info!("Successfully connected to address: {}", address);
 
-        // Use Arc and Mutex to share the stream between threads
+        /// Use Arc and Mutex to share the stream between threads
         let stream_clone = stream.try_clone().expect("Failed to clone stream!");
 
         let stream_arc = Arc::new(Mutex::new(stream_clone));
 
-        // Clone the stream for the sender thread
+        /// Clone the stream for the sender thread
         let sender_stream = Arc::clone(&stream_arc);
         thread::spawn(move || {
             thread::spawn(move || {
@@ -145,13 +147,13 @@ fn main() {
             });
         });
 
-        // Clone the stream for the reader thread
+        /// Clone the stream for the reader thread
         let reader_stream = Arc::clone(&stream_arc);
         thread::spawn(move || {
             loop {
                 loop {
 
-                    // Read the command and size from the server
+                    /// Read the command and size from the server
                     let mut buffer = [0; 1024]; // Buffer size can be adjusted as needed
                     match stream.read(&mut buffer) {
                         Ok(n) => {
@@ -161,7 +163,7 @@ fn main() {
                                 process::exit(1);
                             }
 
-                            // Parse the received data
+                            /// Parse the received data
                             let data = String::from_utf8_lossy(&buffer[..n]);
                             let parts: Vec<&str> = data.trim().splitn(2, ' ').collect();
 
@@ -171,7 +173,7 @@ fn main() {
                                 let size_str = parts[1];
                                 if let Ok(size) = size_str.parse::<usize>() {
 
-                                    // Read the data payload of specified size
+                                    /// Read the data payload of specified size
                                     let mut payload = vec![0; size];
                                     match stream.read_exact(&mut payload) {
                                         Ok(_) => {
@@ -181,6 +183,7 @@ fn main() {
                                                     println!("{}", data);
                                                 }
                                                 ".image" => {
+                                                    let parts: Vec<&str> = data.trim().splitn(2, ' ').collect();
                                                     match create_dir("images") {
                                                         Ok(()) => {
                                                             info!("Directory 'images' ready...");
@@ -191,6 +194,9 @@ fn main() {
                                                     }
                                                 }
                                                 ".file" => {
+                                                    let parts: Vec<&str> = data.trim().splitn(2, ' ').collect();
+                                                    let file = parts[0];
+                                                    let content = parts[1];
 
                                                     match create_dir("files") {
                                                         Ok(()) => {
@@ -230,7 +236,7 @@ fn main() {
             }
         });
 
-        // Keep the main thread alive to keep the client running
+        /// Keep the main thread alive to keep the client running
         loop {
             // Perform any main thread tasks if necessary
             std::thread::sleep(std::time::Duration::from_secs(1));

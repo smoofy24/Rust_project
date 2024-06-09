@@ -213,6 +213,22 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
+ "sta-client",
+ "sta-server",
+]
+
+[[package]]
+name = "sta-client"
+version = "0.1.0"
+dependencies = [
+ "log",
+]
+
+[[package]]
+name = "sta-server"
+version = "0.1.0"
+dependencies = [
+ "log",
 ]
 
 [[package]]
