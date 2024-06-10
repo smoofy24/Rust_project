@@ -1,0 +1,1 @@
+/Users/smoofy/Documents/Rust_project/server-client/target/debug/server-client: /Users/smoofy/Documents/Rust_project/server-client/src/main.rs /Users/smoofy/Documents/Rust_project/server-client/src/modules/client.rs /Users/smoofy/Documents/Rust_project/server-client/src/modules/mod.rs /Users/smoofy/Documents/Rust_project/server-client/src/modules/server.rs
