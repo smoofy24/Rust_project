@@ -1,47 +1,51 @@
 //! This crate handles the server side actions for server-client app
 //!
-//! # Server hangling function:
-//!
-//! handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>)
-//!
 
 use std::net::{TcpStream};
 use std::io::{Read, Write};
+use std::io;
 use std::sync::{Arc, Mutex};
 use log::{error, info};
+use anyhow::{Result, Context};
+use thiserror::Error;
 
-pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>) {
+#[derive(Debug, Error)]
+pub enum ServerError {
+    #[error("IO error occurred: {0}")]
+    Io(#[from] io::Error),
 
-    /// Define size of buffer
+    #[error("Failed to get peer address")]
+    PeerAddress,
+}
+
+/// Client connection handler
+pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>) -> Result<()> {
+
+    // Define size of buffer
     let mut buffer = [0; 512];
 
-    /// Init the loop to detext connections
+    // Init the loop to detext connections
     loop {
-        let addr = match stream.peer_addr() {
-            Ok(addr) => addr,
-            Err(e) => {
-                error!("Error getting peer address: {}", e);
-                break;
-            }
-        };
+        let addr = stream.peer_addr().context("Failed to get peer address")?;
+
         match stream.read(&mut buffer) {
             Ok(0) => {
-                /// Client disconnected
+                // Client disconnected
                 info!("Client disconnected: {}", addr);
 
-                /// Remove the client from the list
+                // Remove the client from the list
                 let mut clients = clients.lock().unwrap();
                 clients.retain(|client| {
                     match client.peer_addr() {
                         Ok(client_addr) => client_addr != addr,
-                        Err(_) => true, // Keep the client if we can't get its add ress
+                        Err(_) => true, // Keep the client if we can't get its address
                     }
                 });
 
                 break;
             }
             Ok(bytes_read) => {
-                /// Broadcast the message to all other clients
+                // Broadcast the message to all other clients
                 let mut clients = clients.lock().unwrap();
                 for client in clients.iter_mut() {
 
@@ -73,5 +77,8 @@ pub fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>)
                 break;
             }
         }
+
     }
+
+    Ok(())
 }
